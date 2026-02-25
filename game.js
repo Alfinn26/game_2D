@@ -1,11 +1,11 @@
-const WORLD_WIDTH = 2000;
-const WORLD_HEIGHT = 2000;
+const WORLD_WIDTH = 1600;
+const WORLD_HEIGHT = 1600;
 
 const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
     height: window.innerHeight,
-    backgroundColor: "#7ed957",
+    backgroundColor: "#88c070",
     physics: { default: 'arcade', arcade: { debug:false }},
     scene: { preload, create, update }
 };
@@ -13,20 +13,17 @@ const config = {
 new Phaser.Game(config);
 
 let player, enemies, boss;
-let camera;
-let hp=100, maxHp=100;
+let hp=100;
 let hpBar;
 let score=0;
 let scoreText;
+let sword;
 let swordLevel=1;
-let playerSwords=[];
 let enemySpeed=120;
 let gameOver=false;
 
-let joystickBase, joystickThumb;
-let joyActive=false;
-let joyPointer=null;
 let joyForce={x:0,y:0};
+let joyActive=false;
 
 function preload(){
     this.load.image('enemy','https://labs.phaser.io/assets/sprites/mushroom2.png');
@@ -37,41 +34,38 @@ function create(){
 
     this.physics.world.setBounds(0,0,WORLD_WIDTH,WORLD_HEIGHT);
 
-    // background rumput
-    for(let i=0;i<200;i++){
-        let tree=this.add.circle(
-            Phaser.Math.Between(0,WORLD_WIDTH),
-            Phaser.Math.Between(0,WORLD_HEIGHT),
-            Phaser.Math.Between(20,40),
-            0x2e8b57
-        ).setAlpha(0.6);
+    // Background hutan simpel (grid rumput)
+    for(let x=0;x<WORLD_WIDTH;x+=80){
+        for(let y=0;y<WORLD_HEIGHT;y+=80){
+            this.add.rectangle(x,y,80,80,0x7fbf6f).setOrigin(0);
+        }
     }
 
-    player=this.physics.add.circle(WORLD_WIDTH/2,WORLD_HEIGHT/2,20,0x0000ff);
+    player=this.physics.add.circle(WORLD_WIDTH/2,WORLD_HEIGHT/2,20,0x0044ff);
     player.setCollideWorldBounds(true);
 
-    camera=this.cameras.main;
-    camera.startFollow(player);
-    camera.setBounds(0,0,WORLD_WIDTH,WORLD_HEIGHT);
+    this.cameras.main.startFollow(player);
+    this.cameras.main.setBounds(0,0,WORLD_WIDTH,WORLD_HEIGHT);
 
     enemies=this.physics.add.group();
 
     this.time.addEvent({
-        delay:1500,
+        delay:2000,
         callback:spawnEnemy,
         callbackScope:this,
         loop:true
     });
 
-    this.physics.add.overlap(player,enemies,hitPlayer,null,this);
+    this.physics.add.overlap(player,enemies,damagePlayer,null,this);
 
-    // UI tetap di layar
-    hpBar=this.add.rectangle(20,20,200,20,0x00ff00)
-    .setOrigin(0)
-    .setScrollFactor(0);
+    // Sword (energy blade)
+    sword=this.add.circle(player.x,player.y,10,0xaaaaaa);
 
-    scoreText=this.add.text(config.width-180,20,"Score: 0",{fontSize:"20px",fill:"#000"})
-    .setScrollFactor(0);
+    // UI
+    this.add.rectangle(20,20,200,20,0xff0000).setOrigin(0).setScrollFactor(0);
+    hpBar=this.add.rectangle(20,20,200,20,0x00ff00).setOrigin(0).setScrollFactor(0);
+
+    scoreText=this.add.text(config.width-180,20,"Score: 0",{fontSize:"20px",fill:"#000"}).setScrollFactor(0);
 
     createJoystick.call(this);
 }
@@ -80,13 +74,35 @@ function update(){
 
     if(gameOver) return;
 
-    const speed=300;
-    player.setVelocity(joyForce.x*speed,joyForce.y*speed);
+    player.setVelocity(joyForce.x*300,joyForce.y*300);
 
-    updateSwords(this);
+    // Sword orbit
+    let angle=this.time.now/200;
+    sword.x=player.x+Math.cos(angle)*50;
+    sword.y=player.y+Math.sin(angle)*50;
+
+    // Warna pedang naik level
+    if(swordLevel===1) sword.fillColor=0xaaaaaa;
+    if(swordLevel===2) sword.fillColor=0x00ff00;
+    if(swordLevel>=3) sword.fillColor=0xffd700;
+
+    // Kill enemy
+    enemies.getChildren().forEach(enemy=>{
+        if(Phaser.Math.Distance.Between(sword.x,sword.y,enemy.x,enemy.y)<20){
+            enemy.destroy();
+            score+=10;
+            scoreText.setText("Score: "+score);
+            levelCheck(this);
+        }
+    });
 
     if(boss){
-        this.physics.moveToObject(boss,player,180);
+        this.physics.moveToObject(boss,player,160);
+
+        if(Phaser.Math.Distance.Between(player.x,player.y,boss.x,boss.y)<40){
+            hp=0;
+            damagePlayer.call(this);
+        }
     }
 }
 
@@ -96,108 +112,40 @@ function spawnEnemy(){
     let x=Phaser.Math.Between(0,WORLD_WIDTH);
     let y=Phaser.Math.Between(0,WORLD_HEIGHT);
 
-    let enemy=enemies.create(x,y,null);
-    enemy.body.setCircle(15);
-    enemy.setFillStyle(0xff0000);
-
+    let enemy=enemies.create(x,y,'enemy');
     this.physics.moveToObject(enemy,player,enemySpeed);
 }
 
 function spawnBoss(scene){
-
     boss=scene.physics.add.sprite(
         Phaser.Math.Between(0,WORLD_WIDTH),
         Phaser.Math.Between(0,WORLD_HEIGHT),
         'boss'
     );
-
-    boss.setScale(2);
-    boss.hp=200;
-
-    scene.physics.add.overlap(player,boss,()=>{
-        hp=0;
-        hitPlayer.call(scene);
-    });
-}
-
-function updateSwords(scene){
-
-    if(playerSwords.length===0){
-        createSword(scene);
-    }
-
-    playerSwords.forEach((sword,index)=>{
-
-        let angle=scene.time.now/200 + index;
-        sword.x=player.x+Math.cos(angle)*70;
-        sword.y=player.y+Math.sin(angle)*70;
-
-        // warna level
-        if(swordLevel===1) sword.fillColor=0xaaaaaa;
-        if(swordLevel===2) sword.fillColor=0x00ff00;
-        if(swordLevel>=3) sword.fillColor=0xffd700;
-
-        enemies.getChildren().forEach(enemy=>{
-            if(Phaser.Math.Distance.Between(sword.x,sword.y,enemy.x,enemy.y)<25){
-                splash(scene,enemy.x,enemy.y);
-                enemy.destroy();
-                score+=10;
-                scoreText.setText("Score: "+score);
-                levelCheck(scene);
-            }
-        });
-
-        if(boss && Phaser.Math.Distance.Between(sword.x,sword.y,boss.x,boss.y)<40){
-            boss.hp-=5;
-            if(boss.hp<=0){
-                splash(scene,boss.x,boss.y);
-                boss.destroy();
-                boss=null;
-            }
-        }
-    });
-}
-
-function createSword(scene){
-    let sword=scene.add.triangle(player.x,player.y,0,0,40,10,0,20,0xffffff);
-    playerSwords.push(sword);
-}
-
-function splash(scene,x,y){
-    let circle=scene.add.circle(x,y,10,0xffffff);
-    scene.tweens.add({
-        targets:circle,
-        alpha:0,
-        scale:3,
-        duration:300,
-        onComplete:()=>circle.destroy()
-    });
+    boss.setScale(1.5);
 }
 
 function levelCheck(scene){
-
     if(score>0 && score%100===0){
-
         swordLevel++;
-        enemySpeed+=40;
-
+        enemySpeed+=30;
         spawnBoss(scene);
     }
 }
 
-function hitPlayer(){
+function damagePlayer(){
     hp-=10;
-    hpBar.width=(hp/maxHp)*200;
+    hpBar.width=(hp/100)*200;
 
     if(hp<=0){
         gameOver=true;
         this.physics.pause();
 
         this.add.text(
-            camera.midPoint.x,
-            camera.midPoint.y,
+            this.cameras.main.midPoint.x,
+            this.cameras.main.midPoint.y,
             "GAME OVER\nTap to Restart",
-            {fontSize:"40px",fill:"#000",align:"center"}
+            {fontSize:"36px",fill:"#000",align:"center"}
         )
         .setOrigin(0.5)
         .setScrollFactor(0);
@@ -208,45 +156,36 @@ function hitPlayer(){
 
 function createJoystick(){
 
-    joystickBase=this.add.circle(100,config.height-100,60,0x006400)
-    .setAlpha(0.5)
+    let base=this.add.circle(100,config.height-100,60,0x006400)
+    .setAlpha(0.4)
     .setScrollFactor(0);
 
-    joystickThumb=this.add.circle(100,config.height-100,30,0x00aa00)
-    .setAlpha(0.8)
+    let thumb=this.add.circle(100,config.height-100,30,0x00aa00)
     .setScrollFactor(0);
-
-    this.input.on("pointerdown",pointer=>{
-        if(pointer.x<200 && pointer.y>config.height-200){
-            joyActive=true;
-            joyPointer=pointer;
-        }
-    });
 
     this.input.on("pointermove",pointer=>{
-        if(joyActive && pointer.id===joyPointer.id){
+        if(pointer.isDown){
             let dx=pointer.x-100;
             let dy=pointer.y-(config.height-100);
             let dist=Math.sqrt(dx*dx+dy*dy);
-            let maxDist=50;
+            let max=50;
 
-            if(dist>maxDist){
-                dx=dx/dist*maxDist;
-                dy=dy/dist*maxDist;
+            if(dist>max){
+                dx=dx/dist*max;
+                dy=dy/dist*max;
             }
 
-            joystickThumb.x=100+dx;
-            joystickThumb.y=config.height-100+dy;
+            thumb.x=100+dx;
+            thumb.y=config.height-100+dy;
 
-            joyForce.x=dx/maxDist;
-            joyForce.y=dy/maxDist;
+            joyForce.x=dx/max;
+            joyForce.y=dy/max;
         }
     });
 
-    this.input.on("pointerup",pointer=>{
-        joyActive=false;
-        joystickThumb.x=100;
-        joystickThumb.y=config.height-100;
+    this.input.on("pointerup",()=>{
+        thumb.x=100;
+        thumb.y=config.height-100;
         joyForce={x:0,y:0};
     });
-}
+        }
