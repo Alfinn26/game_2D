@@ -2,53 +2,42 @@ const config = {
     type: Phaser.AUTO,
     width: window.innerWidth,
     height: window.innerHeight,
-    backgroundColor: "#98d98e",
+    backgroundColor: "#a8e6a1",
     physics: { default: 'arcade', arcade: { debug:false }},
-    scene: { preload, create, update },
-    plugins: {
-        global: [{
-            key: 'rexVirtualJoystick',
-            plugin: rexvirtualjoystickplugin,
-            start: true
-        }]
-    }
+    scene: { preload, create, update }
 };
 
 const game = new Phaser.Game(config);
 
-let player, enemies, joystick;
+let player, enemies;
 let hp=100, maxHp=100;
 let hpBar;
 let score=0;
 let scoreText;
 let swordItem;
-let gameOver=false;
-
 let playerSwords=[];
 let enemySpeed=120;
 let swordLevel=1;
+let gameOver=false;
+
+// ANALOG VARIABLE
+let joystickBase, joystickThumb;
+let joyActive=false;
+let joyPointer=null;
+let joyForce={x:0,y:0};
 
 function preload(){
     this.load.image('player','https://labs.phaser.io/assets/sprites/phaser-dude.png');
     this.load.image('enemy','https://labs.phaser.io/assets/sprites/mushroom2.png');
     this.load.image('sword','https://labs.phaser.io/assets/sprites/sword.png');
-    this.load.audio('bgm','https://labs.phaser.io/assets/audio/tech.mp3');
 }
 
 function create(){
 
-    score=0;
-    hp=100;
-    swordLevel=1;
-    enemySpeed=120;
-    gameOver=false;
-
-    this.sound.play('bgm',{loop:true,volume:0.3});
-
-    player = this.physics.add.image(config.width/2,config.height/2,'player')
+    player=this.physics.add.image(config.width/2,config.height/2,'player')
     .setCollideWorldBounds(true);
 
-    enemies = this.physics.add.group();
+    enemies=this.physics.add.group();
 
     spawnSwordItem.call(this);
 
@@ -61,16 +50,51 @@ function create(){
 
     this.physics.add.overlap(player,enemies,hitPlayer,null,this);
 
+    // HP BAR
+    this.add.rectangle(20,20,200,20,0xff0000).setOrigin(0);
     hpBar=this.add.rectangle(20,20,200,20,0x00ff00).setOrigin(0);
 
+    // SCORE
     scoreText=this.add.text(config.width-180,20,"Score: 0",{fontSize:"20px",fill:"#000"});
 
-    joystick = this.plugins.get('rexVirtualJoystick').add(this,{
-        x:100,
-        y:config.height-100,
-        radius:70,
-        base:this.add.circle(0,0,70,0x006400),
-        thumb:this.add.circle(0,0,35,0x00aa00)
+    // ANALOG MANUAL
+    joystickBase=this.add.circle(100,config.height-100,60,0x006400).setAlpha(0.5);
+    joystickThumb=this.add.circle(100,config.height-100,30,0x00aa00).setAlpha(0.8);
+
+    this.input.on("pointerdown",pointer=>{
+        if(pointer.x<200 && pointer.y>config.height-200){
+            joyActive=true;
+            joyPointer=pointer;
+        }
+    });
+
+    this.input.on("pointermove",pointer=>{
+        if(joyActive && pointer.id===joyPointer.id){
+            let dx=pointer.x-100;
+            let dy=pointer.y-(config.height-100);
+            let dist=Math.sqrt(dx*dx+dy*dy);
+            let maxDist=50;
+
+            if(dist>maxDist){
+                dx=dx/dist*maxDist;
+                dy=dy/dist*maxDist;
+            }
+
+            joystickThumb.x=100+dx;
+            joystickThumb.y=config.height-100+dy;
+
+            joyForce.x=dx/maxDist;
+            joyForce.y=dy/maxDist;
+        }
+    });
+
+    this.input.on("pointerup",pointer=>{
+        if(pointer.id===joyPointer?.id){
+            joyActive=false;
+            joystickThumb.x=100;
+            joystickThumb.y=config.height-100;
+            joyForce={x:0,y:0};
+        }
     });
 }
 
@@ -78,19 +102,10 @@ function update(){
 
     if(gameOver) return;
 
-    const force=300; // lebih sensitif
-    player.setVelocity(
-        joystick.forceX*force,
-        joystick.forceY*force
-    );
+    const speed=300;
+    player.setVelocity(joyForce.x*speed,joyForce.y*speed);
 
     updateSwords(this,player,playerSwords);
-
-    enemies.getChildren().forEach(enemy=>{
-        if(enemy.swords){
-            updateSwords(this,enemy,enemy.swords);
-        }
-    });
 }
 
 function spawnEnemy(){
@@ -100,17 +115,7 @@ function spawnEnemy(){
     let y=Phaser.Math.Between(0,config.height);
 
     let enemy=enemies.create(x,y,'enemy');
-    enemy.hp=20;
-    enemy.swords=[];
-
     this.physics.moveToObject(enemy,player,enemySpeed);
-
-    // Musuh juga bisa ambil pedang
-    this.physics.add.overlap(enemy,swordItem,()=>{
-        giveSword(this,enemy);
-        swordItem.destroy();
-        spawnSwordItem.call(this);
-    });
 }
 
 function spawnSwordItem(){
@@ -121,21 +126,15 @@ function spawnSwordItem(){
     );
 
     this.physics.add.overlap(player,swordItem,()=>{
-        giveSword(this,player);
+        giveSword(this);
         swordItem.destroy();
         spawnSwordItem.call(this);
     });
 }
 
-function giveSword(scene,owner){
-
-    let sword=scene.add.image(owner.x,owner.y,'sword');
-
-    if(owner===player){
-        playerSwords.push(sword);
-    }else{
-        owner.swords.push(sword);
-    }
+function giveSword(scene){
+    let sword=scene.add.image(player.x,player.y,'sword');
+    playerSwords.push(sword);
 }
 
 function updateSwords(scene,owner,swords){
@@ -145,29 +144,29 @@ function updateSwords(scene,owner,swords){
         sword.x=owner.x+Math.cos(angle)*60;
         sword.y=owner.y+Math.sin(angle)*60;
 
-        // warna pedang berdasarkan level
         if(swordLevel===1) sword.setTint(0xaaaaaa);
         if(swordLevel===2) sword.setTint(0x00ff00);
         if(swordLevel>=3) sword.setTint(0xffd700);
 
         enemies.getChildren().forEach(enemy=>{
-            if(owner===player && Phaser.Math.Distance.Between(sword.x,sword.y,enemy.x,enemy.y)<30){
+            if(Phaser.Math.Distance.Between(sword.x,sword.y,enemy.x,enemy.y)<30){
                 enemy.destroy();
                 score+=10;
                 scoreText.setText("Score: "+score);
-                levelUpCheck();
+                levelUp();
             }
         });
-
-        if(owner!==player && Phaser.Math.Distance.Between(sword.x,sword.y,player.x,player.y)<30){
-            hitPlayer(player,null);
-        }
     });
 }
 
-function hitPlayer(playerObj,enemy){
-    if(gameOver) return;
+function levelUp(){
+    if(score>0 && score%100===0){
+        swordLevel++;
+        enemySpeed+=40;
+    }
+}
 
+function hitPlayer(){
     hp-=10;
     hpBar.width=(hp/maxHp)*200;
 
@@ -175,7 +174,7 @@ function hitPlayer(playerObj,enemy){
         gameOver=true;
         this.physics.pause();
 
-        let txt=this.add.text(
+        this.add.text(
             config.width/2,
             config.height/2,
             "GAME OVER\nTap to Restart",
@@ -185,16 +184,3 @@ function hitPlayer(playerObj,enemy){
         this.input.once('pointerdown',()=>location.reload());
     }
 }
-
-function levelUpCheck(){
-
-    if(score>0 && score%100===0){
-
-        swordLevel++;
-        enemySpeed+=40;
-
-        enemies.getChildren().forEach(enemy=>{
-            enemy.hp+=10;
-        });
-    }
-        }
