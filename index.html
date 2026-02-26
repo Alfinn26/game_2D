@@ -1,28 +1,33 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>TEST</title>
-<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.js"></script>
+  <title>Dark Forest Hunter - By Alfin</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<script>
-const config = {
-    type: Phaser.AUTO,
-    width: 800,
-    height: 600,
-    backgroundColor: "#222",
-    scene: {
-        create: function() {
-            this.add.text(300,250,"GAME JALAN",{fontSize:"40px",fill:"#ffffff"});
-        }
-    }
-};
+<div id="loadingScreen">Loading...</div>
 
-new Phaser.Game(config);
-</script>
+<div id="menu" class="hidden">
+  <h1>Dark Forest Hunter</h1>
+  <button id="continueBtn">Continue</button>
+  <button id="newGameBtn">New Game</button>
+</div>
 
+<div id="gameUI" class="hidden">
+  <div id="stats">
+    <div>Level: <span id="level">1</span></div>
+    <div>Score: <span id="score">0</span></div>
+    <div class="bar">
+      <div id="hpBar"></div>
+    </div>
+    <div class="bar exp">
+      <div id="expBar"></div>
+    </div>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<script src="script.js"></script>
 </body>
 </html>
