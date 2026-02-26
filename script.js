@@ -4,102 +4,75 @@ const ctx = canvas.getContext("2d");
 canvas.width = 600;
 canvas.height = 400;
 
-let gameData;
+let keys = {};
 
-const SAVE_KEY = "darkForestSave";
+let player = {
+  x: 300,
+  y: 200,
+  size: 30,
+  speed: 3
+};
 
-function defaultData() {
-  return {
-    level: 1,
-    exp: 0,
-    expNeeded: 100,
-    hp: 100,
-    maxHp: 100,
-    damage: 10,
-    score: 0
-  };
+let enemies = [];
+
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
+
+function spawnEnemy() {
+  enemies.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    size: 20,
+    speed: 1.5
+  });
 }
 
-function saveGame() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify(gameData));
+setInterval(spawnEnemy, 2000);
+
+function movePlayer() {
+  if (keys["w"]) player.y -= player.speed;
+  if (keys["s"]) player.y += player.speed;
+  if (keys["a"]) player.x -= player.speed;
+  if (keys["d"]) player.x += player.speed;
 }
 
-function loadGame() {
-  const data = localStorage.getItem(SAVE_KEY);
-  if (data) {
-    gameData = JSON.parse(data);
-  } else {
-    gameData = defaultData();
-  }
+function moveEnemies() {
+  enemies.forEach(enemy => {
+    let dx = player.x - enemy.x;
+    let dy = player.y - enemy.y;
+    let dist = Math.sqrt(dx*dx + dy*dy);
+    enemy.x += (dx/dist) * enemy.speed;
+    enemy.y += (dy/dist) * enemy.speed;
+  });
 }
 
-function newGame() {
-  localStorage.removeItem(SAVE_KEY);
-  gameData = defaultData();
-  startGame();
+function drawBackground() {
+  let gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, "#0f2027");
+  gradient.addColorStop(1, "#203a43");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
-function startGame() {
-  document.getElementById("menu").classList.add("hidden");
-  document.getElementById("gameUI").classList.remove("hidden");
-  updateUI();
-  gameLoop();
+function drawPlayer() {
+  ctx.fillStyle = "lime";
+  ctx.fillRect(player.x, player.y, player.size, player.size);
 }
 
-function updateUI() {
-  document.getElementById("level").textContent = gameData.level;
-  document.getElementById("score").textContent = gameData.score;
-
-  document.getElementById("hpBar").style.width =
-    (gameData.hp / gameData.maxHp) * 100 + "%";
-
-  document.getElementById("expBar").style.width =
-    (gameData.exp / gameData.expNeeded) * 100 + "%";
-}
-
-function gainExp(amount) {
-  gameData.exp += amount;
-  gameData.score += amount;
-
-  if (gameData.exp >= gameData.expNeeded) {
-    gameData.exp -= gameData.expNeeded;
-    gameData.level++;
-    gameData.expNeeded = Math.floor(gameData.expNeeded * 1.5);
-    gameData.maxHp += 20;
-    gameData.hp = gameData.maxHp;
-    gameData.damage += 5;
-  }
-
-  updateUI();
-  saveGame();
+function drawEnemies() {
+  ctx.fillStyle = "red";
+  enemies.forEach(enemy => {
+    ctx.fillRect(enemy.x, enemy.y, enemy.size, enemy.size);
+  });
 }
 
 function gameLoop() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = "green";
-  ctx.fillRect(280, 180, 40, 40);
-
+  drawBackground();
+  movePlayer();
+  moveEnemies();
+  drawPlayer();
+  drawEnemies();
   requestAnimationFrame(gameLoop);
 }
 
-document.getElementById("continueBtn").onclick = () => {
-  loadGame();
-  startGame();
-};
-
-document.getElementById("newGameBtn").onclick = () => {
-  newGame();
-};
-
-window.onload = () => {
-  setTimeout(() => {
-    document.getElementById("loadingScreen").classList.add("hidden");
-    document.getElementById("menu").classList.remove("hidden");
-  }, 2000);
-};
-
-// TEST EXP tiap 3 detik
-setInterval(() => {
-  if (gameData) gainExp(20);
-}, 3000);
+gameLoop();
